@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SkyRogue — Platformer completo</title>
+<style>
+  :root{
+    --bg:#0b1020;
+    --panel:#0f1724;
+    --accent:#7dd3fc;
+    --muted:#9aa9b8;
+    --danger:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:linear-gradient(#071126,#04101a);color:#e6eef6;font-family:Inter,Arial,Helvetica;}
+  .wrap{display:flex;gap:12px;padding:12px;height:100vh}
+  .game{flex:1;background:linear-gradient(180deg,#081223,#071020);border-radius:12px;display:flex;flex-direction:column;padding:10px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .canvas-wrap{flex:1;background:#061426;border-radius:8px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+  canvas{background:linear-gradient(#071526,#042036);border-radius:6px;display:block}
+  .sidebar{width:360px;background:var(--panel);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+  h1{font-size:18px;margin:0}
+  .hud{display:flex;gap:8px;align-items:center}
+  .btn{background:var(--accent);border:0;padding:8px 10px;border-radius:8px;color:#022;cursor:pointer}
+  .muted{color:var(--muted);font-size:13px}
+  .section{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px}
+  .controls{display:flex;gap:6px;flex-wrap:wrap}
+  input, select, textarea{background:rgba(0,0,0,0.15);border:0;padding:6px;border-radius:6px;color:#e6eef6}
+  .small{font-size:13px}
+  .log{height:140px;overflow:auto;padding:6px;background:#03121a;border-radius:6px}
+  .level-list{display:flex;flex-direction:column;gap:6px}
+  .slot{height:44px;background:rgba(255,255,255,0.02);border-radius:6px;display:flex;align-items:center;justify-content:space-between;padding:6px}
+  .flex{display:flex;gap:6px;align-items:center}
+  footer{font-size:12px;color:var(--muted);text-align:center;margin-top:6px}
+  @media(max-width:1000px){.wrap{flex-direction:column}.sidebar{width:100%}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="game">
+      <div class="topbar">
+        <div>
+          <h1>SkyRogue — Platformer</h1>
+          <div class="muted small">Controles: A/D o flechas — W/Space para saltar — Shift dash — E editor — R reiniciar nivel — P pausar</div>
+        </div>
+        <div class="hud">
+          <div class="muted">Nivel: <span id="uiLevel">1</span></div>
+          <div class="muted">Vidas: <span id="uiLives">3</span></div>
+          <div class="muted">Monedas: <span id="uiCoins">0</span></div>
+          <div style="width:14px"></div>
+          <button class="btn" id="btnRestart">Reiniciar</button>
+          <button class="btn" id="btnEditor">Editor</button>
+        </div>
+      </div>
+
+      <div class="canvas-wrap">
+        <canvas id="gameCanvas" width="960" height="540"></canvas>
+        <!-- overlay debug / messages -->
+        <div id="overlay" style="position:absolute;left:12px;top:12px;color:#cfefff;font-family:monospace"></div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;margin-top:8px">
+        <div class="muted small">Tiempo: <span id="uiTime">0.00</span>s</div>
+        <div class="muted small">FPS: <span id="uiFPS">0</span></div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="section">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="muted">Opciones</div>
+          <div class="flex">
+            <button class="btn small" id="btnSave">Guardar</button>
+            <button class="btn small" id="btnLoad">Cargar</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <label class="muted small">Volumen</label>
+          <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7" style="flex:1">
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="muted">Niveles</div>
+        <div class="level-list" id="levelList"></div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <input id="newLevelName" placeholder="Nombre nivel" />
+          <button class="btn small" id="btnNewLevel">Crear</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="muted">Editor (E)</div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <select id="tileSelect">
+            <option value="0">Vacio</option>
+            <option value="1">Suelo</option>
+            <option value="2">Pared</option>
+            <option value="3">Plataforma movil</option>
+            <option value="4">Enemigo</option>
+            <option value="5">Moneda</option>
+            <option value="6">Corazon</option>
+            <option value="7">Meta (salida)</option>
+          </select>
+          <button class="btn small" id="btnExportJSON">Export</button>
+          <button class="btn small" id="btnImportJSON">Import</button>
+        </div>
+        <div class="muted small" style="margin-top:6px">En modo editor, clic en el canvas para colocar tiles. Shift+clic borra.</div>
+      </div>
+
+      <div class="section">
+        <div class="muted">Registro</div>
+        <div class="log" id="log"></div>
+      </div>
+
+      <div style="margin-top:auto" class="muted small">Hecho por ChatGPT — Pega el archivo en tu servidor o abre localmente.</div>
+    </div>
+  </div>
+
+<script>
+/* --------------------------------------------------
+   SkyRogue Platformer - single file game
+   - motor de físicas simple
+   - tilemap, colisiones
+   - enemigos y pickups
+   - editor de niveles
+   - guardado y export/import JSON
+   -------------------------------------------------- */
+
+"use strict";
+
+/* -------------------------------
+   Config y utilidades
+   ------------------------------- */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const uiLevel = document.getElementById('uiLevel');
+const uiLives = document.getElementById('uiLives');
+const uiCoins = document.getElementById('uiCoins');
+const uiTime = document.getElementById('uiTime');
+const uiFPS = document.getElementById('uiFPS');
+const logEl = document.getElementById('log');
+const levelListEl = document.getElementById('levelList');
+
+const W = canvas.width, H = canvas.height;
+
+const TILE = 32;
+const MAP_W = 40;   // tiles across
+const MAP_H = 17;   // tiles down
+
+const DEFAULT_LEVEL_NAME = "Nivel 1";
+
+let volume = parseFloat(document.getElementById('volume').value);
+
+function rand(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function log(txt){ const d=document.createElement('div'); d.textContent = `[${new Date().toLocaleTimeString()}] ${txt}`; logEl.prepend(d); }
+
+/* -------------------------------
+   Estado del juego
+   ------------------------------- */
+let game = {
+  levels: {},
+  currentLevel: null,
+  player: null,
+  running: false,
+  paused: false,
+  time: 0,
+  coins: 0,
+  lives: 3,
+  fps: 0,
+  debug: false,
+  editorMode: false,
+  lastRun: null // replay buffer placeholder
+};
+
+/* -------------------------------
+   Plantillas de niveles
+   ------------------------------- */
+function createEmptyMap(){
+  const tiles = new Array(MAP_H);
+  for(let y=0;y<MAP_H;y++){
+    tiles[y] = new Array(MAP_W).fill(0);
+  }
+  // base floor on bottom row
+  for(let x=0;x<MAP_W;x++) tiles[MAP_H-1][x] = 1;
+  return tiles;
+}
+
+function makeDefaultLevel(){
+  const tiles = createEmptyMap();
+  // create some platforms
+  for(let x=5;x<12;x++) tiles[12][x]=1;
+  for(let x=14;x<20;x++) tiles[9][x]=1;
+  for(let x=22;x<28;x++) tiles[11][x]=1;
+  // walls
+  tiles[MAP_H-2][0] = 2;
+  tiles[MAP_H-2][MAP_W-1] = 2;
+  // moving platform (3) create small platform tiles -- editor will treat special
+  tiles[10][30]=3; tiles[10][31]=3;
+  // enemies and pickups
+  tiles[11][8] = 4; // enemy
+  tiles[8][16] = 5; // coin
+  tiles[8][18] = 5;
+  tiles[11][26] = 7; // goal
+  return {name: DEFAULT_LEVEL_NAME, tiles, spawn:{x:2,y:MAP_H-2}};
+}
+
+/* -------------------------------
+   Inicialización niveles
+   ------------------------------- */
+function seedLevels(){
+  game.levels = {};
+  game.levels['lvl1'] = makeDefaultLevel();
+  // quick generated level 2
+  const lvl2 = createEmptyMap();
+  for(let i=0;i<8;i++){ const y = 12 - i%3*2; for(let x=4+i*3;x<8+i*3;x++) lvl2[y][x]=1; }
+  lvl2[MAP_H-1][MAP_W-1] = 1;
+  lvl2[14][12]=4; lvl2[13][20]=5; lvl2[12][35]=7;
+  lvl2.name = "Cañones del viento"; lvl2.spawn={x:2,y:MAP_H-2};
+  game.levels['lvl2'] = lvl2;
+
+  const lvl3 = createEmptyMap();
+  for(let x=6;x<35;x+=4) lvl3[MAP_H-5][x]=1;
+  lvl3[MAP_H-6][20]=4; lvl3[MAP_H-7][25]=5; lvl3[MAP_H-8][36]=7;
+  lvl3.name = "Altiplano"; lvl3.spawn={x:2,y:MAP_H-2};
+  game.levels['lvl3'] = lvl3;
+
+  // set current level if none
+  if(!game.currentLevel) game.currentLevel = 'lvl1';
+}
+
+/* -------------------------------
+   Entidades y física
+   ------------------------------- */
+class Player {
+  constructor(x,y){
+    this.x = x; this.y = y; // position in tiles (float)
+    this.vx = 0; this.vy = 0;
+    this.w = 0.8; this.h = 1.6; // tiles
+    this.onGround = false;
+    this.canDoubleJump = true;
+    this.speed = 6; // tiles per second (approx)
+    this.jumpForce = 11;
+    this.dashCooldown = 0;
+    this.invulnerable = 0;
+    this.coins = 0;
+  }
+  rect(){ return {x:this.x - this.w/2, y:this.y - this.h, w:this.w, h:this.h}; }
+  update(dt, level){
+    // input
+    let ax = 0;
+    if(keys.left) ax -= 1;
+    if(keys.right) ax += 1;
+    // horizontal
+    const targetVx = ax * this.speed;
+    const accel = 40;
+    this.vx += (targetVx - this.vx) * clamp(accel*dt,0,1);
+    // gravity
+    const g = 28;
+    this.vy += g * dt;
+
+    // dash
+    if(keys.dash && this.dashCooldown<=0){
+      this.dashCooldown = 0.5;
+      this.vx += (keys.right?1:(keys.left?-1: (this.vx>0?1:-1))) * 18;
+      playSound('dash');
+    }
+    if(this.dashCooldown>0) this.dashCooldown -= dt;
+
+    // integrate
+    this.x += this.vx * dt;
+    // horizontal collisions
+    resolveTileCollisions(this, level, true);
+    this.y += this.vy * dt;
+    // vertical collisions
+    this.onGround = false;
+    resolveTileCollisions(this, level, false);
+
+    // invul timer
+    if(this.invulnerable>0) this.invulnerable -= dt;
+
+    // limit fall area
+    if(this.y > MAP_H + 5){ // fell
+      onPlayerDie();
+    }
+  }
+  jump(){
+    if(this.onGround){
+      this.vy = -this.jumpForce; this.onGround = false; this.canDoubleJump = true; playSound('jump');
+    } else if(this.canDoubleJump){
+      this.vy = -this.jumpForce*0.9; this.canDoubleJump = false; playSound('doublejump');
+    }
+  }
+  takeDamage(amount){
+    if(this.invulnerable>0) return;
+    game.lives -= amount;
+    this.invulnerable = 1.2;
+    playSound('hurt');
+    if(game.lives <= 0) {
+      log('Game Over');
+      // restart whole game
+      setTimeout(()=> startLevel(game.currentLevel), 800);
+    }
+  }
+}
+
+/* -------------------------------
+   Enemigos, pickups, moving platforms
+   ------------------------------- */
+class Enemy {
+  constructor(x,y){
+    this.x = x; this.y = y; this.w=0.8; this.h=1.0; this.vx = 1.2 * (Math.random()<0.5?1:-1); this.hp=1;
+  }
+  rect(){ return {x:this.x - this.w/2, y:this.y - this.h, w:this.w, h:this.h}; }
+  update(dt,level){
+    // simple patrol
+    this.x += this.vx * dt;
+    // if hitting wall, reverse
+    const r = this.rect();
+    if(collidesTileRect(level, r)) this.vx *= -1;
+    // gravity
+    this.y += 0.01; // small gravity to keep them on platform
+  }
+}
+
+class MovingPlatform {
+  constructor(x,y,length,axis='x',range=3,period=2){
+    this.x=x; this.y=y; this.len=length; this.axis=axis; this.range=range; this.period=period; this.t=0;
+    this.ox = x; this.oy = y;
+  }
+  update(dt){
+    this.t += dt;
+    const a = Math.sin((this.t/this.period)*Math.PI*2) * this.range;
+    if(this.axis==='x') this.x = this.ox + a; else this.y = this.oy + a;
+  }
+}
+
+/* -------------------------------
+   Tile collision helpers
+   ------------------------------- */
+function tileAt(level,tx,ty){
+  if(tx<0||ty<0||tx>=MAP_W||ty>=MAP_H) return 1; // outside = solid
+  return level.tiles[ty][tx];
+}
+function collidesTileRect(level, rect){
+  const x0 = Math.floor(rect.x), y0 = Math.floor(rect.y), x1 = Math.floor(rect.x + rect.w), y1 = Math.floor(rect.y + rect.h);
+  for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+    const t = tileAt(level, x, y);
+    if(t===1 || t===2 || t===3) return true;
+  }
+  return false;
+}
+
+function resolveTileCollisions(entity, level, horizontalOnly){
+  const r = entity.rect();
+  // check overlapping tiles and push out
+  const minX = Math.floor(r.x), maxX = Math.floor(r.x + r.w);
+  const minY = Math.floor(r.y), maxY = Math.floor(r.y + r.h);
+  let pushed = false;
+  for(let ty=minY; ty<=maxY; ty++){
+    for(let tx=minX; tx<=maxX; tx++){
+      const t = tileAt(level, tx, ty);
+      if(t===0 || t===5 || t===6 || t===7 || t===4) continue;
+      // tile rect
+      const txr = {x:tx, y:ty, w:1, h:1};
+      if(rectIntersect(r, txr)){
+        pushed = true;
+        // compute push vector minimal
+        const overlapX = Math.min(r.x + r.w, txr.x + txr.w) - Math.max(r.x, txr.x);
+        const overlapY = Math.min(r.y + r.h, txr.y + txr.h) - Math.max(r.y, txr.y);
+        if(horizontalOnly){
+          // push horizontally based on velocity
+          if(entity.vx > 0){
+            entity.x -= overlapX + 0.001;
+            entity.vx = 0;
+          } else if(entity.vx < 0){
+            entity.x += overlapX + 0.001;
+            entity.vx = 0;
+          }
+        } else {
+          // vertical push
+          if(entity.vy > 0){
+            // landing on top
+            entity.y -= overlapY + 0.001;
+            entity.vy = 0;
+            entity.onGround = true;
+            if(entity instanceof Player){ entity.canDoubleJump = true; }
+          } else if(entity.vy < 0){
+            entity.y += overlapY + 0.001;
+            entity.vy = 0;
+          }
+        }
+      }
+    }
+  }
+  return pushed;
+}
+
+function rectIntersect(a,b){
+  return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
+}
+
+/* -------------------------------
+   Input
+   ------------------------------- */
+const keys = {left:false,right:false,jump:false,dash:false};
+window.addEventListener('keydown', e=>{
+  if(e.key === "ArrowLeft" || e.key === "a") keys.left = true;
+  if(e.key === "ArrowRight" || e.key === "d") keys.right = true;
+  if(e.key === " " || e.key === "w" || e.key === "ArrowUp") { keys.jump = true; playerJump(); }
+  if(e.key === "Shift") keys.dash = true;
+  if(e.key === "e") toggleEditor();
+  if(e.key === "r") startLevel(game.currentLevel);
+  if(e.key === "p") game.paused = !game.paused;
+  if(e.key === "F3") game.debug = !game.debug;
+});
+window.addEventListener('keyup', e=>{
+  if(e.key === "ArrowLeft" || e.key === "a") keys.left = false;
+  if(e.key === "ArrowRight" || e.key === "d") keys.right = false;
+  if(e.key === " " || e.key === "w" || e.key === "ArrowUp") keys.jump = false;
+  if(e.key === "Shift") keys.dash = false;
+});
+
+/* -------------------------------
+   Gameplay events
+   ------------------------------- */
+function playerJump(){
+  if(!game.player) return;
+  game.player.jump();
+}
+
+function onPlayerDie(){
+  log('Has caido.');
+  game.lives = Math.max(0, game.lives-1);
+  if(game.lives<=0){
+    log('No te quedan vidas. Reiniciando juego.');
+    game.lives = 3;
+    game.coins = 0;
+    // restart from first level
+    startLevel(Object.keys(game.levels)[0]);
+  } else {
+    // respawn
+    startLevel(game.currentLevel);
+  }
+  updateUI();
+}
+
+function checkEntityCollisions(){
+  const playerRect = game.player.rect();
+  const level = game.levels[game.currentLevel];
+
+  // iterate tiles for pickups & enemies
+  for(let y=0;y<MAP_H;y++){
+    for(let x=0;x<MAP_W;x++){
+      const t = level.tiles[y][x];
+      if(t===5 || t===6 || t===7 || t===4){
+        const tileRect = {x:x, y:y, w:1, h:1};
+        if(rectIntersect(playerRect, tileRect)){
+          if(t===5){ // coin
+            game.coins += 1;
+            level.tiles[y][x] = 0;
+            playSound('coin');
+            log('Moneda recogida');
+            updateUI();
+          } else if(t===6){ // heart
+            game.lives += 1;
+            level.tiles[y][x] = 0;
+            playSound('heal');
+            updateUI();
+          } else if(t===7){ // goal
+            playSound('goal');
+            log('Nivel completado');
+            advanceLevel();
+            return;
+          } else if(t===4){
+            // enemy tile - damage
+            if(game.player.invulnerable <= 0){
+              game.player.takeDamage(1);
+              // knockback
+              game.player.vx = -Math.sign(game.player.vx||1)*4;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // entity collisions (dynamic enemies)
+  for(let en of level._enemies || []){
+    if(rectIntersect(playerRect, en.rect())){
+      if(game.player.invulnerable <= 0){
+        game.player.takeDamage(1);
+      }
+    }
+  }
+}
+
+function advanceLevel(){
+  const keysList = Object.keys(game.levels);
+  const idx = keysList.indexOf(game.currentLevel);
+  if(idx < keysList.length - 1){
+    startLevel(keysList[idx+1]);
+  } else {
+    log('¡Has completado todos los niveles! Reiniciando al primero.');
+    startLevel(keysList[0]);
+  }
+}
+
+/* -------------------------------
+   Level management
+   ------------------------------- */
+function startLevel(key){
+  const level = game.levels[key];
+  if(!level) { log('Nivel no existe: '+key); return; }
+  game.currentLevel = key;
+  // clone tiles so edits don't mutate original template
+  level.tiles = level.tiles || createEmptyMap();
+  // reinitialize dynamic entity lists
+  level._enemies = [];
+  level._platforms = [];
+
+  // scan tiles to spawn dynamics
+  for(let y=0;y<MAP_H;y++){
+    for(let x=0;x<MAP_W;x++){
+      const t = level.tiles[y][x];
+      if(t===4) level._enemies.push(new Enemy(x+0.5,y+1)); // enemy center
+      if(t===3) level._platforms.push(new MovingPlatform(x,y,2,'x',2,2));
+    }
+  }
+
+  // spawn player
+  const sp = level.spawn || {x:2,y:MAP_H-2};
+  game.player = new Player(sp.x, sp.y + 0.01 + 0.5);
+  game.time = 0;
+  game.running = true;
+  updateUI();
+  log('Iniciando '+(level.name||key));
+  // ensure UI shows proper level label
+  uiLevel.textContent = level.name || key;
+}
+
+/* -------------------------------
+   Rendering
+   ------------------------------- */
+function renderLevel(level){
+  // tile draw
+  const camX = clamp(Math.floor(game.player.x - (W/TILE)/2), 0, MAP_W - Math.floor(W/TILE));
+  const camY = clamp(Math.floor(game.player.y - (H/TILE)/2), 0, MAP_H - Math.floor(H/TILE));
+  ctx.save();
+  ctx.clearRect(0,0,W,H);
+  // background parallax
+  drawParallax(camX,camY);
+
+  for(let y=0;y<MAP_H;y++){
+    for(let x=0;x<MAP_W;x++){
+      const t = level.tiles[y][x];
+      const sx = (x - camX) * TILE;
+      const sy = (y - camY) * TILE;
+      if(t===1){
+        // floor tile
+        ctx.fillStyle = '#27455a';
+        ctx.fillRect(sx, sy, TILE, TILE);
+        ctx.fillStyle = '#1b333f';
+        ctx.fillRect(sx, sy+TILE*0.6, TILE, TILE*0.4);
+      } else if(t===2){
+        ctx.fillStyle = '#3b4856';
+        ctx.fillRect(sx,sy,TILE,TILE);
+      } else if(t===3){
+        ctx.fillStyle = '#6b7f8e';
+        ctx.fillRect(sx,sy, TILE*2, TILE*0.5);
+      } else if(t===5){
+        // coin
+        ctx.fillStyle = '#f6c85f';
+        ctx.beginPath(); ctx.arc(sx+TILE/2, sy+TILE/2, TILE*0.25, 0, Math.PI*2); ctx.fill();
+      } else if(t===6){
+        ctx.fillStyle = '#ff6b6b';
+        ctx.fillRect(sx+TILE*0.25, sy+TILE*0.25, TILE*0.5, TILE*0.5);
+      } else if(t===7){
+        ctx.fillStyle = '#67e8f9';
+        ctx.fillRect(sx+TILE*0.1, sy+TILE*0.1, TILE*0.8, TILE*0.8);
+      } else if(t===4){
+        // static enemy tile (will also be in _enemies)
+        ctx.fillStyle = '#e06b6b';
+        ctx.beginPath(); ctx.arc(sx+TILE/2, sy+TILE/2, TILE*0.28, 0, Math.PI*2); ctx.fill();
+      } else {
+        // empty
+      }
+    }
+  }
+
+  // platforms dynamic
+  for(let p of level._platforms){
+    const sx = (p.x - camX) * TILE;
+    const sy = (p.y - camY) * TILE;
+    ctx.fillStyle = '#a0b0bf';
+    ctx.fillRect(sx, sy, p.len * TILE, TILE*0.4);
+  }
+
+  // enemies dynamic
+  for(let e of level._enemies){
+    const ex = (e.x - camX * 1) * TILE;
+    const ey = (e.y - camY * 1) * TILE;
+    ctx.fillStyle = '#ff7b7b';
+    ctx.beginPath(); ctx.arc(ex, ey - TILE*0.2, TILE*0.3, 0, Math.PI*2); ctx.fill();
+  }
+
+  // player draw
+  const prx = (game.player.x - camX) * TILE;
+  const pry = (game.player.y - camY) * TILE;
+  ctx.save();
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.ellipse(prx, pry + TILE*0.25, TILE*0.38, TILE*0.16, 0, 0, Math.PI*2); ctx.fill();
+  // body
+  ctx.fillStyle = game.player.invulnerable>0 ? '#ffd66b' : '#67e8f9';
+  ctx.fillRect(prx - TILE*0.25, pry - TILE*0.8, TILE*0.5, TILE*0.8);
+  ctx.restore();
+
+  // debug: hitbox
+  if(game.debug){
+    ctx.strokeStyle = 'rgba(255,0,0,0.6)';
+    const r = game.player.rect();
+    ctx.strokeRect((r.x - camX)*TILE, (r.y - camY)*TILE, r.w*TILE, r.h*TILE);
+  }
+
+  ctx.restore();
+}
+
+function drawParallax(camX, camY){
+  // sky gradient + clouds
+  ctx.fillStyle = '#052033';
+  ctx.fillRect(0,0,W,H);
+  // light cloud bands
+  for(let i=0;i<3;i++){
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = '#dff7ff';
+    const y = (i+1)*H/5 + Math.sin((camX+i)*0.02) * 10;
+    ctx.fillRect(0, y, W, H/10);
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* -------------------------------
+   Sounds (placeholders)
+   ------------------------------- */
+const sounds = {
+  jump: null,
+  doublejump: null,
+  dash: null,
+  coin: null,
+  hurt: null,
+  goal: null,
+  heal: null
+};
+function playSound(name){
+  // placeholder: you can load Audio objects into sounds[name]
+  // Example: sounds.coin = new Audio('assets/coin.wav')
+  // To keep this file standalone, we simply log the event and could simulate tiny beep.
+  // For browsers that support AudioContext, you could synthesize - omitted for brevity.
+  // Keep volume reference
+  //console.log('SFX', name);
+}
+
+/* -------------------------------
+   Main loop
+   ------------------------------- */
+let lastTime = performance.now();
+let fpsCounter = {count:0,last:Date.now(),fps:0};
+function loop(now){
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+  if(!game.paused && game.running){
+    update(dt);
+    render();
+  } else {
+    // paused - still draw static frame
+    render();
+  }
+  requestAnimationFrame(loop);
+  // fps
+  fpsCounter.count++;
+  if(Date.now() - fpsCounter.last > 500){
+    fpsCounter.fps = Math.round((fpsCounter.count*1000)/(Date.now()-fpsCounter.last));
+    fpsCounter.count = 0; fpsCounter.last = Date.now();
+    uiFPS.textContent = fpsCounter.fps;
+  }
+}
+
+/* -------------------------------
+   Update
+   ------------------------------- */
+function update(dt){
+  game.time += dt;
+  uiTime.textContent = game.time.toFixed(2);
+
+  const level = game.levels[game.currentLevel];
+  // update moving platforms
+  for(let p of level._platforms) p.update(dt);
+  // update enemies
+  for(let e of level._enemies) e.update(dt, level);
+
+  // update player
+  game.player.update(dt, level);
+
+  // check collisions with tiles & pickups
+  checkEntityCollisions();
+
+  // careful: update UI counts
+  updateUI();
+}
+
+/* -------------------------------
+   Render wrapper
+   ------------------------------- */
+function render(){
+  renderLevel(game.levels[game.currentLevel]);
+  overlay.innerText = (game.editorMode ? "[EDITOR]" : "") + " " + (game.paused ? "[PAUSADO]" : "");
+}
+
+/* -------------------------------
+   UI & Controls (buttons)
+   ------------------------------- */
+document.getElementById('btnRestart').addEventListener('click', ()=> startLevel(game.currentLevel));
+document.getElementById('btnEditor').addEventListener('click', ()=> toggleEditor());
+document.getElementById('btnSave').addEventListener('click', ()=> saveToLocal());
+document.getElementById('btnLoad').addEventListener('click', ()=> loadFromLocal());
+document.getElementById('btnNewLevel').addEventListener('click', createNewLevel);
+document.getElementById('btnExportJSON').addEventListener('click', exportCurrentLevel);
+document.getElementById('btnImportJSON').addEventListener('click', importLevelPrompt);
+
+// volume slider
+document.getElementById('volume').addEventListener('input', (e)=> { volume = parseFloat(e.target.value); });
+
+/* -------------------------------
+   Editor interactions
+   ------------------------------- */
+const tileSelect = document.getElementById('tileSelect');
+let mouseDown = false;
+canvas.addEventListener('mousedown', (e)=>{
+  mouseDown = true;
+  onCanvasClick(e, e.shiftKey);
+});
+window.addEventListener('mouseup', ()=> mouseDown = false);
+canvas.addEventListener('mousemove', (e)=>{ if(mouseDown && game.editorMode) onCanvasClick(e, event.shiftKey); });
+
+function toggleEditor(){
+  game.editorMode = !game.editorMode;
+  overlay.innerText = game.editorMode ? "[EDITOR]" : "";
+  log('Editor ' + (game.editorMode ? 'activado' : 'desactivado'));
+}
+
+function onCanvasClick(e, erase){
+  if(!game.editorMode) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left; const my = e.clientY - rect.top;
+  const camX = clamp(Math.floor(game.player.x - (W/TILE)/2), 0, MAP_W - Math.floor(W/TILE));
+  const camY = clamp(Math.floor(game.player.y - (H/TILE)/2), 0, MAP_H - Math.floor(H/TILE));
+  const tx = Math.floor(mx / TILE) + camX;
+  const ty = Math.floor(my / TILE) + camY;
+  if(tx<0||ty<0||tx>=MAP_W||ty>=MAP_H) return;
+  const level = game.levels[game.currentLevel];
+  if(erase) level.tiles[ty][tx] = 0;
+  else {
+    const sel = parseInt(tileSelect.value, 10);
+    level.tiles[ty][tx] = sel;
+  }
+  startLevel(game.currentLevel); // refresh dynamics
+}
+
+/* -------------------------------
+   Level list UI
+   ------------------------------- */
+function refreshLevelList(){
+  levelListEl.innerHTML = '';
+  for(const k of Object.keys(game.levels)){
+    const lvl = game.levels[k];
+    const div = document.createElement('div'); div.className = 'slot';
+    const name = document.createElement('div'); name.textContent = lvl.name || k;
+    const buttons = document.createElement('div');
+    const btnPlay = document.createElement('button'); btnPlay.className='btn small'; btnPlay.textContent='Jugar';
+    btnPlay.addEventListener('click', ()=> startLevel(k));
+    const btnEdit = document.createElement('button'); btnEdit.className='btn small'; btnEdit.textContent='Cargar';
+    btnEdit.addEventListener('click', ()=> { game.currentLevel = k; startLevel(k); });
+    buttons.appendChild(btnPlay); buttons.appendChild(btnEdit);
+    div.appendChild(name); div.appendChild(buttons);
+    levelListEl.appendChild(div);
+  }
+}
+function createNewLevel(){
+  const name = document.getElementById('newLevelName').value || 'Nuevo nivel';
+  const key = 'lvl' + (Object.keys(game.levels).length + 1);
+  const tiles = createEmptyMap();
+  // fill some patterns
+  for(let x=2;x<MAP_W-2;x+=6) tiles[MAP_H-3][x]=1;
+  tiles[MAP_H-1][MAP_W-2]=1;
+  game.levels[key] = {name, tiles, spawn:{x:2,y:MAP_H-2}};
+  refreshLevelList();
+  log('Nivel creado: '+name);
+}
+
+/* -------------------------------
+   Save / Load
+   ------------------------------- */
+function saveToLocal(){
+  const payload = {levels: game.levels, currentLevel: game.currentLevel, lives: game.lives, coins: game.coins};
+  localStorage.setItem('skyrogue_save', JSON.stringify(payload));
+  log('Juego guardado en localStorage.');
+}
+function loadFromLocal(){
+  const raw = localStorage.getItem('skyrogue_save');
+  if(!raw) { log('No hay guardado.'); return; }
+  try {
+    const p = JSON.parse(raw);
+    game.levels = p.levels || game.levels;
+    game.currentLevel = p.currentLevel || game.currentLevel;
+    game.lives = p.lives || game.lives;
+    game.coins = p.coins || game.coins;
+    startLevel(game.currentLevel);
+    refreshLevelList();
+    log('Guardado cargado.');
+  } catch(e){ log('Error al cargar: '+e.message); }
+}
+
+/* -------------------------------
+   Export / Import level JSON
+   ------------------------------- */
+function exportCurrentLevel(){
+  const lvl = game.levels[game.currentLevel];
+  const data = JSON.stringify(lvl);
+  const blob = new Blob([data], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = (lvl.name || 'level') + '.json'; a.click();
+  URL.revokeObjectURL(url);
+  log('Nivel exportado.');
+}
+function importLevelPrompt(){
+  const inp = document.createElement('input'); inp.type='file'; inp.accept='.json';
+  inp.addEventListener('change', ()=> {
+    const f = inp.files[0];
+    const reader = new FileReader();
+    reader.onload = ()=> {
+      try {
+        const obj = JSON.parse(reader.result);
+        const key = 'lvl' + (Object.keys(game.levels).length + 1);
+        game.levels[key] = obj;
+        refreshLevelList();
+        log('Nivel importado: ' + (obj.name || key));
+      } catch(e){
+        log('Formato inválido');
+      }
+    };
+    reader.readAsText(f);
+  });
+  inp.click();
+}
+
+/* -------------------------------
+   Utilities: UI update
+   ------------------------------- */
+function updateUI(){
+  uiLevel.textContent = game.levels[game.currentLevel].name || game.currentLevel;
+  uiLives.textContent = game.lives;
+  uiCoins.textContent = game.coins;
+}
+
+/* -------------------------------
+   Startup
+   ------------------------------- */
+document.getElementById('btnImportJSON').addEventListener('click', importLevelPrompt);
+
+seedLevels();
+refreshLevelList();
+// start first level
+startLevel(game.currentLevel || Object.keys(game.levels)[0]);
+
+// auto save occasionally
+setInterval(()=> saveToLocal(), 30_000);
+
+// run loop
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
